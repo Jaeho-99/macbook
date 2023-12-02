@@ -1,0 +1,160 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
+import re
+import psycopg2
+import time
+import logging
+import sys
+import getpass
+
+class Crawling:
+
+    def __init__(self):
+        self.drvier = None
+        self.connection = None
+        self.cursor = None
+
+    def start_driver(self):
+        self.driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
+
+    def quit_driver(self):
+        self.driver.quit()
+
+    def connect_db(self):
+        db_config = {
+        'dbname': 'your_database_name',
+        'user': 'your_username',
+        'password': 'your_password',
+        'host': 'your_host',
+        'port': 'your_port',
+        }
+
+        try:
+            self.connection = psycopg2.connect(**db_config)
+            logging.info("Connected to PostgreSQL.")
+        except psycopg2.OperationalError:
+            logging.info(f"Could not establish the database connection.")
+        self.cursor = self.connection.cursor()
+
+    def create_table(self):
+        # univstore 테이블 생성
+        create_univstore_table_query = '''
+            CREATE TABLE IF NOT EXISTS univstore (
+                id SERIAL PRIMARY KEY,
+                product_number VARCHAR(255),
+                price INTEGER,
+                category VARCHAR(255),
+                year INTEGER,
+                cpu VARCHAR(255),
+                ram VARCHAR(255),
+                ssd VARCHAR(255),
+                color VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP,
+                updated_at TIMESTAMP
+            );
+        '''
+        self.cursor.excute(create_univstore_table_query)
+
+        # coupang 테이블 생성
+        create_coupang_table_query = '''
+            CREATE TABLE IF NOT EXISTS coupang (
+                id SERIAL PRIMARY KEY,
+                product_number VARCHAR(255),
+                price INTEGER,
+                category VARCHAR(255),
+                year INTEGER,
+                cpu VARCHAR(255),
+                ram VARCHAR(255),
+                ssd VARCHAR(255),
+                color VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP,
+                updated_at TIMESTAMP
+            );
+        '''
+        self.cursor.excute(create_coupang_table_query)
+        
+        self.connection.commit()
+
+    # 학생 복지 스토어에 로그인하는 함수
+    def login_univstore(self):
+        self.driver.get("https://www.univstore.com/user/login?redirect=%2F")
+        self.driver.implicitly_wait(60)
+
+        # 로그인
+        try:
+            id = getpass.getpass("학생복지스토어의 id를 입력하시오 >> ")
+            pw = getpass.getpass("학생복지스토어의 pw를 입력하시오 >> ")
+            id_element = self.driver.find_element(By.NAME, "userid")
+            pw_element = self.driver.find_element(By.NAME, "password")
+            submit_element = self.driver.find_element(By.NAME, "submit")
+            ActionChains(self.driver).send_keys_to_element(id_element, id).send_keys_to_element(pw_element, pw).click(submit_element).perform()
+        except:
+            print("잘못된 id와 pw입니다.")
+
+    # 맥북 정보 리스트 페이지에서 정보를 갖고 오는 함수
+    def get_macbook_info_in_univstore(self):
+        '''
+        input : 맥북 페이지의 url
+        output :
+        1. 카테고리 (pro, air)
+        2. 연도 (2020, 2021, 2022, ..)
+        3. CPU (M1, M2, ..)
+        4. RAM (8GB, 16GB, ..)
+        5. SSD (256GB, 512GB, ..)
+        6. 색상 (스페이스 그레이, 실버, 골드, ..)
+        7. 가격
+        8. 상품 번호 -> primary key
+        9. 풀 네임 (MacBook Air 15 2023년 M2 CPU 8코어 GPU 10코어 8GB 256GB 스페이스 그레이)
+        '''
+        macbook_url = "https://univstore.com/category/computer?ctg_sub_code=020100&ctg_third_code=020101"
+        self.driver.get(macbook_url)
+        self.driver.implicitly_wait(60)
+
+        # 상품 더보기로 모든 상품 출력
+        more_button_element = self.driver.find_element(By.CLASS_NAME, "usInputButtonRound")
+        while True:
+            try:
+                more_button_element.click()
+                self.driver.implicitly_wait(3)
+            except:
+                break
+
+        product_elements = self.driver.find_elements(By.CLASS_NAME, "usItemThumbnailLink")
+        product_href_list = [product_element.get_attribute("href") for product_element in product_elements]
+        for product_href in product_href_list:
+            
+            self.driver.get(product_href)
+            self.driver.implicitly_wait(60)
+
+            try:
+                product_number = self.driver.find_element(By.CLASS_NAME, "usItemCardInfoCode").text
+                product_price = int(self.driver.find_element(By.CLASS_NAME, "usItemCardInfoPrice2").text.replace(",", ""))
+                product_info_element = self.driver.find_element(By.CLASS_NAME, "usInputSelectOptionPickerPlaceholder")
+                product_infos = product_info_element.text.split(",")
+                
+                print(product_number, product_price, product_infos)
+            except:
+                print("옛날 제품은 정보 제공이 안 됩니다. 죄송합니다.")
+
+
+    def insert_data(self, table_name, dataset):
+        '''
+        input : 테이블 이름, (상품번호, 가격, 카테고리, 연도, CPU, RAM, SSD, 색상)
+        데이터를 디비에 저장하는 함수.
+        '''
+        try :
+            insert_query = f'''
+                INSERT INTO {table_name} (product_number, price, category, year, cpu, ram, ssd, color) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+            '''
+            self.cursor.excute(insert_query, dataset)
+            self.connection.commit()
+            logging.info(f"Data successfully stored in the {table_name} table.")
+        except psycopg2.Error as err:
+            logging.error(f"error : {err}")
+            self.connection.rollback()
+            sys.exit(1)
