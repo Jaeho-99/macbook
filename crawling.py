@@ -9,6 +9,8 @@ import time
 import logging
 import sys
 import getpass
+import csv
+from datetime import datetime
 
 class Crawling:
 
@@ -16,6 +18,27 @@ class Crawling:
         self.drvier = None
         self.connection = None
         self.cursor = None
+        self.csv_file = None
+        self.writer = None
+        
+    def open_csv_file(self):
+        current_date = datetime.now().strftime("%Y%m%d_%H_%M")
+        csv_file_path = f"dataset_{current_date}.csv"
+        self.csv_file = open(csv_file_path, mode='w', newline='')
+        self.csv_writer = csv.writer(self.csv_file)
+        cols = [
+            'product_id',
+            'product_price',
+            'product_color',
+            'product_chip',
+            'product_ram',
+            'product_ssd',
+            'product_keyboard'
+        ]
+        self.csv_writer.writerow(cols)
+    
+    def close_csv_file(self):
+        self.csv_file.close()
 
     def start_driver(self):
         self.driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
@@ -44,7 +67,7 @@ class Crawling:
         create_univstore_table_query = '''
             CREATE TABLE IF NOT EXISTS univstore (
                 id SERIAL PRIMARY KEY,
-                product_number VARCHAR(255),
+                product_id VARCHAR(255),
                 price INTEGER,
                 category VARCHAR(255),
                 year INTEGER,
@@ -63,7 +86,7 @@ class Crawling:
         create_coupang_table_query = '''
             CREATE TABLE IF NOT EXISTS coupang (
                 id SERIAL PRIMARY KEY,
-                product_number VARCHAR(255),
+                product_id VARCHAR(255),
                 price INTEGER,
                 category VARCHAR(255),
                 year INTEGER,
@@ -98,6 +121,7 @@ class Crawling:
 
     # 맥북 정보 리스트 페이지에서 정보를 갖고 오는 함수
     def get_macbook_info_in_univstore(self):
+        self.open_csv_file()
         '''
         input : 맥북 페이지의 url
         output :
@@ -108,8 +132,6 @@ class Crawling:
         5. SSD (256GB, 512GB, ..)
         6. 색상 (스페이스 그레이, 실버, 골드, ..)
         7. 가격
-        8. 상품 번호 -> primary key
-        9. 풀 네임 (MacBook Air 15 2023년 M2 CPU 8코어 GPU 10코어 8GB 256GB 스페이스 그레이)
         '''
         macbook_url = "https://univstore.com/category/computer?ctg_sub_code=020100&ctg_third_code=020101"
         self.driver.get(macbook_url)
@@ -132,15 +154,16 @@ class Crawling:
             self.driver.implicitly_wait(60)
 
             try:
-                product_number = self.driver.find_element(By.CLASS_NAME, "usItemCardInfoCode").text
+                product_id = self.driver.find_element(By.CLASS_NAME, "usItemCardInfoCode").text
                 product_price = int(self.driver.find_element(By.CLASS_NAME, "usItemCardInfoPrice2").text.replace(",", ""))
                 product_info_element = self.driver.find_element(By.CLASS_NAME, "usInputSelectOptionPickerPlaceholder")
                 product_infos = product_info_element.text.split(",")
                 
-                print(product_number, product_price, product_infos)
+                print(product_id, product_price, product_infos)
+                self.csv_writer.writerow([product_id, product_price]+product_infos)
             except:
                 print("옛날 제품은 정보 제공이 안 됩니다. 죄송합니다.")
-
+        self.close_csv_file()
 
     def insert_data(self, table_name, dataset):
         '''
@@ -149,7 +172,7 @@ class Crawling:
         '''
         try :
             insert_query = f'''
-                INSERT INTO {table_name} (product_number, price, category, year, cpu, ram, ssd, color) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                INSERT INTO {table_name} (product_id, price, category, year, cpu, ram, ssd, color) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
             '''
             self.cursor.excute(insert_query, dataset)
             self.connection.commit()
