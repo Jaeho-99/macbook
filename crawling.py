@@ -142,10 +142,9 @@ class Crawling:
         while True:
             try:
                 more_button_element.click()
-                self.driver.implicitly_wait(3)
             except:
                 break
-
+        self.driver.implicitly_wait(3)
         product_elements = self.driver.find_elements(By.CLASS_NAME, "usItemThumbnailLink")
         product_href_list = [product_element.get_attribute("href") for product_element in product_elements]
         for product_href in product_href_list:
@@ -161,8 +160,8 @@ class Crawling:
                 
                 print(product_id, product_price, product_infos)
                 self.csv_writer.writerow([product_id, product_price]+product_infos)
-            except:
-                print("옛날 제품은 정보 제공이 안 됩니다. 죄송합니다.")
+            except Exception as e:
+                print(f"error 발생 : {e}")
         self.close_csv_file()
 
     def insert_data(self, table_name, dataset):
