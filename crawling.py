@@ -139,9 +139,12 @@ class Crawling:
 
         # 상품 더보기로 모든 상품 출력
         more_button_element = self.driver.find_element(By.CLASS_NAME, "usInputButtonRound")
-        while True:
+        cnt = 1
+        while cnt < 20:
             try:
                 more_button_element.click()
+                self.driver.implicitly_wait(0.5)
+                cnt += 1
             except:
                 break
         self.driver.implicitly_wait(3)
