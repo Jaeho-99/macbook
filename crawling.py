@@ -143,7 +143,7 @@ class Crawling:
         while cnt < 20:
             try:
                 more_button_element.click()
-                self.driver.implicitly_wait(0.5)
+                time.sleep(0.5)
                 cnt += 1
             except:
                 break
@@ -154,6 +154,7 @@ class Crawling:
             
             self.driver.get(product_href)
             self.driver.implicitly_wait(60)
+            time.sleep(0.5)
 
             try:
                 product_id = self.driver.find_element(By.CLASS_NAME, "usItemCardInfoCode").text
